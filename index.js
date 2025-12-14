@@ -31,6 +31,7 @@ async function run() {
 
     const db = client.db("mealsDB");
     const mealsCollection = db.collection("meals");
+    const ordersCollection = db.collection("order_collection");
 
     // save meals in db
 
@@ -51,6 +52,14 @@ async function run() {
     app.get("/meals/:id", async (req, res) => {
       const id = req.params.id;
       const result = await mealsCollection.findOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
+
+    // order related api
+    app.post("/orders", async (req, res) => {
+      const orderData = req.body;
+      orderData.orderTime = new Date();
+      const result = await ordersCollection.insertOne(orderData);
       res.send(result);
     });
 
