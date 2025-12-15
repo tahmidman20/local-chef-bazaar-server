@@ -33,6 +33,7 @@ async function run() {
     const db = client.db("mealsDB");
     const mealsCollection = db.collection("meals");
     const ordersCollection = db.collection("order_collection");
+    const usersCollection = db.collection("users");
 
     // save meals in db
 
@@ -109,6 +110,23 @@ async function run() {
         console.error("Stripe Error:", error);
         res.status(500).send({ error: error.message });
       }
+    });
+
+    // users data save in db
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      if (!user?.email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+      const existingUser = await usersCollection.findOne({ email: user.email });
+      if (existingUser) {
+        return res.send({ message: "User already exists" });
+      }
+      user.role = "user";
+      user.createdAt = new Date();
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
     });
 
     // Send a ping to confirm a successful connection
