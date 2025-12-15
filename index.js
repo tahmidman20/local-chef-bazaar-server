@@ -3,6 +3,7 @@ const cors = require("cors");
 const app = express();
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 3000;
 
 // middleware
@@ -61,6 +62,53 @@ async function run() {
       orderData.orderTime = new Date();
       const result = await ordersCollection.insertOne(orderData);
       res.send(result);
+    });
+    // logIn user orders
+    app.get("/orders", async (req, res) => {
+      const email = req.query.email;
+      const query = email ? { userEmail: email } : {};
+      const result = await ordersCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // payment related API
+
+    app.post("/create-payment-intent", async (req, res) => {
+      try {
+        const { orderId, totalPrice } = req.body;
+
+        console.log("Payment Request:", orderId, totalPrice);
+
+        if (!orderId || !totalPrice) {
+          return res
+            .status(400)
+            .send({ error: "Missing orderId or totalPrice" });
+        }
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: "Meal Order Payment",
+                },
+                unit_amount: Math.round(totalPrice * 100),
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+        });
+
+        res.send({ url: session.url });
+      } catch (error) {
+        console.error("Stripe Error:", error);
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // Send a ping to confirm a successful connection
