@@ -124,9 +124,29 @@ async function run() {
         return res.send({ message: "User already exists" });
       }
       user.role = "user";
-      user.createdAt = new Date();
+      (user.status = "active"), (user.createdAt = new Date());
       const result = await usersCollection.insertOne(user);
       res.send(result);
+    });
+
+    //get user role
+    app.get("/users/role/:email", async (req, res) => {
+      const email = req.params.email;
+
+      const user = await usersCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ role: null });
+      }
+
+      res.send({ role: user.role });
+    });
+
+    //get user profile
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await usersCollection.findOne({ email });
+      res.send(user);
     });
 
     // Send a ping to confirm a successful connection
