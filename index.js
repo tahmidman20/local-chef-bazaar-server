@@ -60,10 +60,13 @@ async function run() {
     // order related api
     app.post("/orders", async (req, res) => {
       const orderData = req.body;
+      orderData.status = "pending";
+      orderData.paymentStatus = "pending";
       orderData.orderTime = new Date();
       const result = await ordersCollection.insertOne(orderData);
       res.send(result);
     });
+
     // logIn user orders
     app.get("/orders", async (req, res) => {
       const email = req.query.email;
@@ -101,13 +104,57 @@ async function run() {
             },
           ],
           mode: "payment",
-          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?orderId=${orderId}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
         });
 
         res.send({ url: session.url });
       } catch (error) {
         console.error("Stripe Error:", error);
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    // update order status
+
+    app.patch("/orders/:id", async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body;
+
+      const allowedStatus = ["pending", "accepted", "cancelled", "delivered"];
+
+      if (!allowedStatus.includes(status)) {
+        return res.status(400).send({ message: "Invalid status" });
+      }
+
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status,
+        },
+      };
+
+      const result = await ordersCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    //payment success
+    app.post("/payment-success", async (req, res) => {
+      try {
+        const { orderId } = req.body;
+
+        if (!orderId)
+          return res.status(400).send({ error: "Order ID required" });
+
+        // order update
+        const result = await ordersCollection.updateOne(
+          { _id: new ObjectId(orderId) },
+          { $set: { paymentStatus: "paid" } }
+        );
+
+        res.send({ success: true, result });
+      } catch (error) {
+        console.error(error);
         res.status(500).send({ error: error.message });
       }
     });
@@ -132,9 +179,7 @@ async function run() {
     //get user role
     app.get("/users/role/:email", async (req, res) => {
       const email = req.params.email;
-
       const user = await usersCollection.findOne({ email });
-
       if (!user) {
         return res.status(404).send({ role: null });
       }
