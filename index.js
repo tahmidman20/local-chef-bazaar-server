@@ -34,6 +34,7 @@ async function run() {
     const mealsCollection = db.collection("meals");
     const ordersCollection = db.collection("order_collection");
     const usersCollection = db.collection("users");
+    const reviewsCollection = db.collection("reviews");
 
     // save meals in db
 
@@ -185,6 +186,15 @@ async function run() {
       }
 
       res.send({ role: user.role });
+    });
+
+    //save review db
+
+    app.post("/reviews", async (req, res) => {
+      const review = req.body;
+      review.date = new Date();
+      const result = await reviewsCollection.insertOne(review);
+      res.send(result);
     });
 
     //get user profile
