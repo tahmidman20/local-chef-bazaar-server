@@ -188,12 +188,27 @@ async function run() {
       res.send({ role: user.role });
     });
 
+    // ---------------------------------------------//
+    //                 reviews                      //
+    //----------------------------------------------//
     //save review db
 
     app.post("/reviews", async (req, res) => {
       const review = req.body;
       review.date = new Date();
       const result = await reviewsCollection.insertOne(review);
+      res.send(result);
+    });
+
+    // get all reviews of a specific meal
+
+    app.get("/reviews/:foodId", async (req, res) => {
+      const foodId = req.params.foodId;
+      const result = await reviewsCollection
+        .find({ foodId })
+        .sort({ date: -1 })
+        .toArray();
+
       res.send(result);
     });
 
