@@ -35,6 +35,7 @@ async function run() {
     const ordersCollection = db.collection("order_collection");
     const usersCollection = db.collection("users");
     const reviewsCollection = db.collection("reviews");
+    const favoritesCollection = db.collection("favorites");
 
     // save meals in db
 
@@ -262,6 +263,29 @@ async function run() {
         }
       );
 
+      res.send(result);
+    });
+
+    //add to favorite
+    app.post("/favorites", async (req, res) => {
+      const favorite = req.body;
+
+      if (!favorite.userEmail || !favorite.mealId) {
+        return res.status(400).send({ message: "Invalid data" });
+      }
+
+      const exists = await favoritesCollection.findOne({
+        userEmail: favorite.userEmail,
+        mealId: favorite.mealId,
+      });
+
+      if (exists) {
+        return res.send({ message: "Already added to favorites" });
+      }
+
+      favorite.addedTime = new Date();
+
+      const result = await favoritesCollection.insertOne(favorite);
       res.send(result);
     });
 
