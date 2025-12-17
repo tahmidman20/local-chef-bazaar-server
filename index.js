@@ -188,9 +188,8 @@ async function run() {
       res.send({ role: user.role });
     });
 
-    // ---------------------------------------------//
     //                 reviews                      //
-    //----------------------------------------------//
+
     //save review db
 
     app.post("/reviews", async (req, res) => {
@@ -217,6 +216,53 @@ async function run() {
     app.get("/reviews", async (req, res) => {
       const reviews = await reviewsCollection.find().toArray();
       res.send(reviews);
+    });
+
+    //logged-in user reviews
+
+    app.get("/my-reviews", async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: "Email required" });
+      }
+
+      const reviews = await reviewsCollection
+        .find({ userEmail: email })
+        .sort({ date: -1 })
+        .toArray();
+
+      res.send(reviews);
+    });
+
+    //delete review api
+    app.delete("/reviews/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await reviewsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+
+    //update review api
+    app.patch("/reviews/:id", async (req, res) => {
+      const id = req.params.id;
+      const { rating, comment } = req.body;
+
+      const result = await reviewsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            rating,
+            comment,
+            date: new Date(),
+          },
+        }
+      );
+
+      res.send(result);
     });
 
     //get user profile
