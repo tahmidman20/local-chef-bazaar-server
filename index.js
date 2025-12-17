@@ -212,6 +212,13 @@ async function run() {
       res.send(result);
     });
 
+    // get all review for home page
+
+    app.get("/reviews", async (req, res) => {
+      const reviews = await reviewsCollection.find().toArray();
+      res.send(reviews);
+    });
+
     //get user profile
     app.get("/users/:email", async (req, res) => {
       const email = req.params.email;
