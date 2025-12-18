@@ -6,15 +6,45 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 3000;
 
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./local-chef-bazar-a11-firebase-adminsdk-fbsvc-327302281d.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 // middleware
 app.use(express.json());
-app.use(cors());
+// app.use(cors());
+app.use(
+  cors({
+    origin: [process.env.SITE_DOMAIN],
+    credentials: true,
+  })
+);
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.1r2gfjh.mongodb.net/?appName=Cluster0`;
 
 app.get("/", (req, res) => {
   res.send("Local bazaar server is running!");
 });
+
+//jwt middleWire
+const verifyJWT = async (req, res, next) => {
+  const token = req?.headers?.authorization?.split(" ")[1];
+  console.log(token);
+  if (!token) return res.status(401).send({ message: "Unauthorized Access!" });
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.tokenEmail = decoded.email;
+    console.log(decoded);
+    next();
+  } catch (err) {
+    console.log(err);
+    return res.status(401).send({ message: "Unauthorized Access!", err });
+  }
+};
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -189,8 +219,6 @@ async function run() {
       res.send({ role: user.role });
     });
 
-    //                 reviews                      //
-
     //save review db
 
     app.post("/reviews", async (req, res) => {
@@ -289,10 +317,74 @@ async function run() {
       res.send(result);
     });
 
+    //get user favorites api
+    app.get("/favorites", async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      const result = await favoritesCollection
+        .find({ userEmail: email })
+        .sort({ addedTime: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+    //delete favorite meal
+    app.delete("/favorites/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await favoritesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+
+    // get meals by logged-in chef
+    app.get("/my-meals", verifyJWT, async (req, res) => {
+      const email = req.query.email;
+
+      if (req.tokenEmail !== email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+
+      const meals = await mealsCollection.find({ userEmail: email }).toArray();
+
+      res.send(meals);
+    });
+
+    //delete meals api
+    app.delete("/meals/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const result = await mealsCollection.deleteOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
+
+    //update meals api
+    app.patch("/meals/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updateDoc = { $set: req.body };
+      const result = await mealsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        updateDoc
+      );
+      res.send(result);
+    });
+
     //get user profile
-    app.get("/users/:email", async (req, res) => {
-      const email = req.params.email;
-      const user = await usersCollection.findOne({ email });
+    app.get("/users/:email", verifyJWT, async (req, res) => {
+      if (req.tokenEmail !== req.params.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+
+      const user = await usersCollection.findOne({
+        email: req.params.email,
+      });
+
       res.send(user);
     });
 
