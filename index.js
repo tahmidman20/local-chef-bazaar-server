@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./local-chef-bazar-a11-firebase-adminsdk-fbsvc-327302281d.json");
+const serviceAccount = require("./serviceAccountKey.json");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -67,6 +67,20 @@ async function run() {
     const reviewsCollection = db.collection("reviews");
     const favoritesCollection = db.collection("favorites");
 
+    //verifyAdmin
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.tokenEmail;
+
+      const adminUser = await usersCollection.findOne({ email });
+
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).send({ message: "Admin only access" });
+      }
+
+      next();
+    };
+
     // save meals in db
 
     app.post("/meals", async (req, res) => {
@@ -78,8 +92,32 @@ async function run() {
     //get all meals from db
 
     app.get("/meals", async (req, res) => {
-      const result = await mealsCollection.find().toArray();
-      res.send(result);
+      const page = parseInt(req.query.page) || 0;
+      const limit = parseInt(req.query.limit) || 9;
+      const sort = req.query.sort;
+
+      const skip = page * limit;
+
+      let sortOption = {};
+      if (sort === "asc") {
+        sortOption = { price: 1 };
+      } else if (sort === "desc") {
+        sortOption = { price: -1 };
+      }
+
+      const meals = await mealsCollection
+        .find()
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+
+      const totalMeals = await mealsCollection.countDocuments();
+
+      res.send({
+        meals,
+        totalMeals,
+      });
     });
 
     //find one data
@@ -87,6 +125,120 @@ async function run() {
       const id = req.params.id;
       const result = await mealsCollection.findOne({ _id: new ObjectId(id) });
       res.send(result);
+    });
+
+    //request Be a chef / admin
+
+    app.post("/requests", verifyJWT, async (req, res) => {
+      const request = req.body;
+
+      if (req.tokenEmail !== request.userEmail) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+
+      const existing = await db.collection("requests").findOne({
+        userEmail: request.userEmail,
+        requestType: request.requestType,
+        requestStatus: "pending",
+      });
+
+      if (existing) {
+        return res.send({ message: "Request already pending" });
+      }
+
+      request.requestStatus = "pending";
+      request.requestTime = new Date();
+
+      const result = await db.collection("requests").insertOne(request);
+      res.send(result);
+    });
+
+    //  get all requests
+
+    app.get("/requests", verifyJWT, async (req, res) => {
+      const adminUser = await usersCollection.findOne({
+        email: req.tokenEmail,
+      });
+
+      if (adminUser?.role !== "admin") {
+        return res.status(403).send({ message: "Admin only" });
+      }
+
+      const result = await db
+        .collection("requests")
+        .find()
+        .sort({ requestTime: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+    //accept request chef / admin
+    app.patch("/requests/approve/:id", verifyJWT, async (req, res) => {
+      const requestId = req.params.id;
+
+      const adminUser = await usersCollection.findOne({
+        email: req.tokenEmail,
+      });
+
+      if (adminUser?.role !== "admin") {
+        return res.status(403).send({ message: "Admin only" });
+      }
+
+      const request = await db
+        .collection("requests")
+        .findOne({ _id: new ObjectId(requestId) });
+
+      if (!request)
+        return res.status(404).send({ message: "Request not found" });
+
+      // role update
+      let updateData = {};
+
+      if (request.requestType === "chef") {
+        const chefId = `chef-${Math.floor(1000 + Math.random() * 9000)}`;
+        updateData = { role: "chef", chefId };
+      }
+
+      if (request.requestType === "admin") {
+        updateData = { role: "admin" };
+      }
+
+      await usersCollection.updateOne(
+        { email: request.userEmail },
+        { $set: updateData }
+      );
+
+      await db
+        .collection("requests")
+        .updateOne(
+          { _id: new ObjectId(requestId) },
+          { $set: { requestStatus: "approved" } }
+        );
+
+      res.send({ message: "Request approved successfully" });
+    });
+
+    //  reject request
+    app.patch("/requests/reject/:id", verifyJWT, async (req, res) => {
+      const requestId = req.params.id;
+
+      const adminUser = await usersCollection.findOne({
+        email: req.tokenEmail,
+      });
+
+      if (adminUser?.role !== "admin") {
+        return res.status(403).send({ message: "Admin only" });
+      }
+
+      await db
+        .collection("requests")
+        .updateOne(
+          { _id: new ObjectId(requestId) },
+          { $set: { requestStatus: "rejected" } }
+        );
+
+      res.send({ message: "Request rejected" });
     });
 
     // order related api
@@ -100,10 +252,28 @@ async function run() {
     });
 
     // logIn user orders
+
     app.get("/orders", async (req, res) => {
-      const email = req.query.email;
-      const query = email ? { userEmail: email } : {};
+      const { chefEmail } = req.query;
+
+      const query = chefEmail ? { chefEmail } : {};
+
       const result = await ordersCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.get("/orders/user", verifyJWT, async (req, res) => {
+      const email = req.query.email;
+
+      if (req.tokenEmail !== email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+
+      const result = await ordersCollection
+        .find({ userEmail: email })
+        .sort({ orderTime: -1 })
+        .toArray();
+
       res.send(result);
     });
 
@@ -217,6 +387,25 @@ async function run() {
       }
 
       res.send({ role: user.role });
+    });
+
+    //get all user
+
+    app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
+      const users = await usersCollection.find().toArray();
+      res.send(users);
+    });
+
+    //make fraud api
+    app.patch("/users/fraud/:id", verifyJWT, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "fraud" } }
+      );
+
+      res.send(result);
     });
 
     //save review db
