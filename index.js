@@ -8,7 +8,10 @@ const port = process.env.PORT || 3000;
 
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./serviceAccountKey.json");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -16,10 +19,10 @@ admin.initializeApp({
 
 // middleware
 app.use(express.json());
-// app.use(cors());
 app.use(
   cors({
-    origin: [process.env.SITE_DOMAIN],
+    origin: process.env.SITE_DOMAIN,
+
     credentials: true,
   })
 );
@@ -27,7 +30,7 @@ app.use(
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.1r2gfjh.mongodb.net/?appName=Cluster0`;
 
 app.get("/", (req, res) => {
-  res.send("Local bazaar server is running!");
+  res.send("Local bazaar server deploy");
 });
 
 //jwt middleWire
@@ -58,7 +61,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const db = client.db("mealsDB");
     const mealsCollection = db.collection("meals");
@@ -80,6 +83,10 @@ async function run() {
 
       next();
     };
+
+    app.get("/test", async (req, res) => {
+      res.json({ message: "route testing" });
+    });
 
     // save meals in db
 
@@ -251,7 +258,7 @@ async function run() {
       res.send(result);
     });
 
-    // logIn user orders
+    // loggedIn user orders
 
     app.get("/orders", async (req, res) => {
       const { chefEmail } = req.query;
@@ -436,6 +443,26 @@ async function run() {
       res.send(reviews);
     });
 
+    //Platform stats API
+
+    app.get("/admin/stats", verifyJWT, verifyAdmin, async (req, res) => {
+      const totalUsers = await usersCollection.countDocuments();
+
+      const pendingOrders = await ordersCollection.countDocuments({
+        status: "pending",
+      });
+
+      const deliveredOrders = await ordersCollection.countDocuments({
+        status: "delivered",
+      });
+
+      res.send({
+        totalUsers,
+        pendingOrders,
+        deliveredOrders,
+      });
+    });
+
     //logged-in user reviews
 
     app.get("/my-reviews", async (req, res) => {
@@ -578,10 +605,10 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
