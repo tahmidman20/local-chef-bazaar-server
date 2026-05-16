@@ -19,10 +19,21 @@ admin.initializeApp({
 
 // middleware
 app.use(express.json());
+// app.use(
+//   cors({
+//        "http://localhost:5173",
+//     origin: process.env.SITE_DOMAIN,
+
+//     credentials: true,
+//   })
+// );
 app.use(
   cors({
-    origin: process.env.SITE_DOMAIN,
-
+    origin: [
+      "http://localhost:5173",
+       "http://127.0.0.1:5173",
+      process.env.SITE_DOMAIN,
+    ],
     credentials: true,
   })
 );
@@ -30,7 +41,7 @@ app.use(
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.1r2gfjh.mongodb.net/?appName=Cluster0`;
 
 app.get("/", (req, res) => {
-  res.send("Local bazaar server deploy");
+  res.send("Local bazaar server Running");
 });
 
 //jwt middleWire
