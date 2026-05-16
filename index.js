@@ -31,7 +31,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-       "http://127.0.0.1:5173",
+      //  "http://127.0.0.1:5173",
       process.env.SITE_DOMAIN,
     ],
     credentials: true,
@@ -622,7 +622,7 @@ async function run() {
     // );
   } finally {
     // Ensures that the client will close when you finish/error
-    // await client.close();
+    await client.close();
   }
 }
 run().catch(console.dir);
